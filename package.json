@@ -1,0 +1,33 @@
+{
+  "name": "EmailWorker",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "config": {
+    "commitizen": {
+      "path": "cz-conventional-changelog"
+    }
+  },
+  "scripts": {
+    "dev:vps": "pnpm --filter ./apps/server dev",
+    "dev:worker": "pnpm --filter ./apps/worker dev",
+    "deploy:worker": "pnpm --filter ./apps/worker deploy",
+    "commit": "cz"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.5.1",
+      "onFail": "download"
+    }
+  },
+  "packageManager": "pnpm@12.5.1",
+  "type": "module",
+  "devDependencies": {
+    "commitizen": "^4.3.2",
+    "cz-conventional-changelog": "^3.3.0"
+  }
+}
