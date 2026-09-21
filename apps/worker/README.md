@@ -9,7 +9,7 @@ VPS 可通过带 Bearer token 的 `/list` 分批列出待补投邮件，再通�
 ```text
 Internet -> Cloudflare Email Routing -> Email Worker
                                            |
-                                           +-- HTTPS POST /push -> 2xx -> 完成（不写 R2）
+                                           +-- HTTPS POST /push/<mailId> -> 2xx -> 完成（不写 R2）
                                            |
                                            +-- 失败/超时/非 2xx -> R2 pending/<mailId>.eml
 
@@ -18,7 +18,7 @@ VPS daemon -> GET /list -> GET /mail -> 保存原始邮件 -> POST /confirm -> �
 
 `mailId` 是完整原始邮件字节的 lowercase SHA-256 hex。R2 对象存在就表示仍待确认，对象不存在就表示没有待补投状态；只有 `/confirm` 会删除对象。
 
-这是至少一次投递，而不是恰好一次投递。VPS 可能已经保存 `/push` 的正文，但响应在到达 Worker 前断开；此时 Worker 仍会写入 R2，之后 VPS 会再次取得相同 `mailId`。VPS 必须按 `mailId` 幂等保存。系统选择“可能重复”，避免“可能丢信”。如果 VPS 推送和 R2 写入都失败，Worker 会抛出异常，不会静默返回成功。
+这是至少一次投递，而不是恰好一次投递。VPS 可能已经保存 `/push/<mailId>` 的正文，但响应在到达 Worker 前断开；此时 Worker 仍会写入 R2，之后 VPS 会再次取得相同 `mailId`。VPS 必须按 `mailId` 幂等保存。系统选择“可能重复”，避免“可能丢信”。如果 VPS 推送和 R2 写入都失败，Worker 会抛出异常，不会静默返回成功。
 
 Email Routing 当前接收入站邮件的上限为 25 MiB。Worker 会把单封邮件读取到一个 `ArrayBuffer`，因为一次性的 `message.raw` 必须同时支持哈希、直推以及失败后的 R2 兜底。Cloudflare 当前 Worker isolate 内存上限为 128 MB；代码不解析或重建 MIME。
 
@@ -59,8 +59,8 @@ R2 bucket 不需要公开域名或 S3 API token；Worker 通过内部 binding �
 
 | 名称 | 用途 |
 | --- | --- |
-| `VPS_BASE_URL` | VPS daemon 的 HTTPS 基础 URL，不包含尾部 `push`，例如 `https://mail.example.net` 或 `https://example.net/daemon` |
-| `VPS_PUSH_TOKEN` | Worker 调用 VPS `/push` 时发送的 Bearer token |
+| `VPS_BASE_URL` | VPS daemon 的 HTTPS 基础 URL，不包含尾部 `push/<mailId>`，例如 `https://mail.example.net` 或 `https://example.net/daemon` |
+| `VPS_PUSH_TOKEN` | Worker 调用 VPS `/push/<mailId>` 时发送的 Bearer token |
 | `WORKER_API_TOKEN` | VPS 调用 Worker `/list`、`/mail`、`/confirm` 时使用的 Bearer token |
 
 生产 secrets：
@@ -89,26 +89,26 @@ pnpm run deploy
 
 重命名 Worker 后需重新选择 Email Routing 规则中的 Worker。
 
-## VPS `/push` 协议
+## VPS `/push/<mailId>` 协议
 
-Worker 最多等待约 10 秒，并请求 `${VPS_BASE_URL}/push`。如果基础 URL 含路径，该路径会保留，例如 `https://example.net/daemon` 变成 `https://example.net/daemon/push`。
+Worker 最多等待约 10 秒，并请求 `${VPS_BASE_URL}/push/<mailId>`。如果基础 URL 含路径，该路径会保留，例如 `https://example.net/daemon` 变成 `https://example.net/daemon/push/<mailId>`。路径中的 `mailId` 是正文完整原始字节的 lowercase SHA-256 hex。
 
 ```http
-POST /push
+POST /push/<64-char lowercase sha256>
 Authorization: Bearer <VPS_PUSH_TOKEN>
 Content-Type: message/rfc822
 X-Mail-ID: <64-char lowercase sha256>
 X-Mail-From: <envelope sender>
 X-Mail-To: <envelope recipient>
 
-<完整原始 RFC822/MIME bytes>
+<完整、未经修改的标准 message/rfc822 文件字节>
 ```
 
-只有 2xx 表示成功。VPS 应先按 `X-Mail-ID` 幂等、可靠地保存 body，再返回 2xx。不要依据 MIME `Message-ID` 去重。
+URL 路径中的 hash 与 `X-Mail-ID` 相同。只有 2xx 表示成功。VPS 应先按该 SHA-256 幂等、可靠地保存 body，再返回 2xx。不要依据 MIME `Message-ID` 去重。
 
 ## Worker HTTP API
 
-完整的机器可读接口定义见 [`openapi.yaml`](./openapi.yaml)，可导入 Swagger UI、Redoc 或支持 OpenAPI 3.1 的客户端工具。该文件只描述 Worker 提供的 `/list`、`/mail` 和 `/confirm`；VPS daemon 提供的 `/push` 不属于 Worker API。
+完整的机器可读接口定义见 [`openapi.yaml`](./openapi.yaml)，可导入 Swagger UI、Redoc 或支持 OpenAPI 3.1 的客户端工具。该文件只描述 Worker 提供的 `/list`、`/mail` 和 `/confirm`；VPS daemon 提供的 `/push/<mailId>` 不属于 Worker API。
 
 所有 `/list`、`/mail` 和 `/confirm` 请求都必须带：
 

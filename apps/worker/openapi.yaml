@@ -10,8 +10,9 @@ info:
     VPS and in R2 when direct delivery succeeds but its HTTP response is lost.
     Clients must use the SHA-256 mail ID for idempotent local storage.
 
-    The VPS `/push` endpoint is not part of this API. It is implemented by the
-    VPS daemon and called by the Worker.
+    The VPS `POST /push/{mailId}` endpoint is not part of this API. It is
+    implemented by the VPS daemon and called by the Worker with a
+    `message/rfc822` body and envelope metadata headers.
 
 servers:
   - url: https://{workerHost}

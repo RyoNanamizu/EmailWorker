@@ -107,7 +107,7 @@ describe("email delivery", () => {
 
 		expect(fetcher).toHaveBeenCalledOnce();
 		const [input, init] = fetcher.mock.calls[0];
-		expect(input.toString()).toBe("https://mail.example.net/daemon/push");
+		expect(input.toString()).toBe(`https://mail.example.net/daemon/push/${id}`);
 		expect(init?.method).toBe("POST");
 		const headers = new Headers(init?.headers);
 		expect(headers.get("Authorization")).toBe(`Bearer ${PUSH_TOKEN}`);

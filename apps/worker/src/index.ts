@@ -17,7 +17,7 @@ const SHA256_ID_PATTERN = /^[0-9a-f]{64}$/i;
 export interface WorkerEnv {
 	/** The only persistent store for messages awaiting VPS confirmation. */
 	MAIL_BUCKET: R2Bucket;
-	/** HTTPS base URL of the VPS daemon; `/push` is appended by the Worker. */
+	/** HTTPS base URL of the VPS daemon; `/push/<mailId>` is appended by the Worker. */
 	VPS_BASE_URL: string;
 	/** Bearer token used by the Worker when calling the VPS. */
 	VPS_PUSH_TOKEN: string;
@@ -96,7 +96,7 @@ async function sha256(raw: ArrayBuffer): Promise<{
  * Builds the daemon endpoint while rejecting plaintext HTTP and URLs that
  * embed credentials. Existing base paths are preserved.
  */
-function pushUrl(baseUrl: string): URL | null {
+function pushUrl(baseUrl: string, id: string): URL | null {
 	try {
 		const base = new URL(baseUrl);
 		if (base.protocol !== "https:" || base.username || base.password) {
@@ -108,7 +108,7 @@ function pushUrl(baseUrl: string): URL | null {
 		}
 		base.search = "";
 		base.hash = "";
-		return new URL("push", base);
+		return new URL(`push/${id}`, base);
 	} catch {
 		return null;
 	}
@@ -127,7 +127,7 @@ async function pushToVps(
 	fetcher: Fetcher,
 	timeoutMs: number,
 ): Promise<boolean> {
-	const url = pushUrl(env.VPS_BASE_URL);
+	const url = pushUrl(env.VPS_BASE_URL, id);
 	if (!url || !env.VPS_PUSH_TOKEN) {
 		console.warn("Email push skipped due to invalid VPS configuration", {
 			mailId: id,
