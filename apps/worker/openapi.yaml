@@ -1,0 +1,257 @@
+openapi: 3.1.0
+info:
+  title: Email Fallback Worker API
+  version: 1.0.0
+  description: |
+    Authenticated recovery API used by the VPS daemon to fetch and confirm raw
+    emails stored in Cloudflare R2.
+
+    This API provides at-least-once delivery. A message can exist on both the
+    VPS and in R2 when direct delivery succeeds but its HTTP response is lost.
+    Clients must use the SHA-256 mail ID for idempotent local storage.
+
+    The VPS `/push` endpoint is not part of this API. It is implemented by the
+    VPS daemon and called by the Worker.
+
+servers:
+  - url: https://{workerHost}
+    description: Deployed Cloudflare Worker
+    variables:
+      workerHost:
+        default: email-fallback-worker.example.workers.dev
+        description: Replace with the deployed workers.dev or custom hostname.
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Pending mail
+    description: Read and acknowledge messages awaiting VPS confirmation.
+
+paths:
+  /list:
+    get:
+      operationId: listPendingMail
+      tags:
+        - Pending mail
+      summary: List pending mail IDs
+      description: |
+        Returns up to `limit` pending mail IDs without reading or deleting the
+        corresponding message bodies. Until IDs are confirmed, repeated calls
+        may return the same IDs.
+      parameters:
+        - name: limit
+          in: query
+          required: true
+          description: Maximum number of pending IDs to return.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+      responses:
+        "200":
+          description: One page of pending mail IDs.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PendingList"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /mail:
+    get:
+      operationId: getPendingMail
+      tags:
+        - Pending mail
+      summary: Download one pending raw message
+      description: |
+        Streams the exact RFC822/MIME bytes for one pending ID. Reading a
+        message does not delete it, so the same ID remains downloadable until
+        it is submitted to `/confirm`.
+      parameters:
+        - name: id
+          in: query
+          required: true
+          description: Case-insensitive SHA-256 mail ID.
+          schema:
+            $ref: "#/components/schemas/MailIdInput"
+      responses:
+        "200":
+          description: The exact raw email bytes.
+          headers:
+            X-Mail-ID:
+              required: true
+              description: Normalized lowercase mail ID.
+              schema:
+                $ref: "#/components/schemas/MailId"
+            X-Mail-From:
+              description: SMTP envelope sender when metadata is available.
+              schema:
+                type: string
+            X-Mail-To:
+              description: SMTP envelope recipient when metadata is available.
+              schema:
+                type: string
+            X-Mail-Received-At:
+              description: Original R2 fallback timestamp when metadata is available.
+              schema:
+                type: string
+                format: date-time
+          content:
+            message/rfc822:
+              schema:
+                type: string
+                format: binary
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+  /confirm:
+    post:
+      operationId: confirmPendingMail
+      tags:
+        - Pending mail
+      summary: Confirm durable VPS storage and delete pending R2 objects
+      description: |
+        Deletes the R2 objects corresponding to the supplied mail IDs. The
+        operation is idempotent: IDs whose objects no longer exist are still
+        counted as confirmed. Duplicate IDs in one request are deleted and
+        counted once.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConfirmRequest"
+            example:
+              ids:
+                - 3f523f3f07453d8b680088dc84d427b87050385b93b4bc32de3127b843e73122
+      responses:
+        "200":
+          description: Every unique supplied ID is now confirmed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfirmResponse"
+              example:
+                ok: true
+                confirmed: 1
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "415":
+          $ref: "#/components/responses/UnsupportedMediaType"
+        "500":
+          $ref: "#/components/responses/InternalServerError"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      description: The value of the Worker's `WORKER_API_TOKEN` secret.
+
+  schemas:
+    MailId:
+      type: string
+      pattern: "^[0-9a-f]{64}$"
+      minLength: 64
+      maxLength: 64
+      description: Lowercase SHA-256 hexadecimal digest of the exact raw email bytes.
+      examples:
+        - 3f523f3f07453d8b680088dc84d427b87050385b93b4bc32de3127b843e73122
+
+    MailIdInput:
+      type: string
+      pattern: "^[0-9A-Fa-f]{64}$"
+      minLength: 64
+      maxLength: 64
+
+    PendingList:
+      type: object
+      additionalProperties: false
+      required:
+        - ids
+        - completed
+      properties:
+        ids:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/MailId"
+        completed:
+          type: boolean
+          description: Whether the R2 listing had no further page at list time.
+
+    ConfirmRequest:
+      type: object
+      required:
+        - ids
+      properties:
+        ids:
+          type: array
+          maxItems: 100
+          items:
+            $ref: "#/components/schemas/MailIdInput"
+
+    ConfirmResponse:
+      type: object
+      additionalProperties: false
+      required:
+        - ok
+        - confirmed
+      properties:
+        ok:
+          type: boolean
+          const: true
+        confirmed:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Number of unique valid IDs accepted by this request.
+
+  responses:
+    BadRequest:
+      description: A query parameter or JSON request field is invalid.
+      content:
+        text/plain:
+          schema:
+            type: string
+    Unauthorized:
+      description: The Authorization header is missing or has an invalid Bearer token.
+      content:
+        text/plain:
+          schema:
+            type: string
+          example: Unauthorized
+    NotFound:
+      description: No pending object exists for the supplied mail ID.
+      content:
+        text/plain:
+          schema:
+            type: string
+          example: Not Found
+    UnsupportedMediaType:
+      description: The request Content-Type is not application/json.
+      content:
+        text/plain:
+          schema:
+            type: string
+          example: Content-Type must be application/json
+    InternalServerError:
+      description: An internal operation failed without exposing implementation details.
+      content:
+        text/plain:
+          schema:
+            type: string
+          example: Internal Server Error

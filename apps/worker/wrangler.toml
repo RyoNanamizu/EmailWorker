@@ -1,0 +1,11 @@
+name = "email-fallback-worker"
+main = "src/index.ts"
+compatibility_date = "2026-09-16"
+upload_source_maps = true
+
+[observability]
+enabled = true
+
+[[r2_buckets]]
+binding = "MAIL_BUCKET"
+bucket_name = "email-worker-mail"
