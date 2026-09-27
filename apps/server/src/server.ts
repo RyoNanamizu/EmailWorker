@@ -8,28 +8,28 @@ import {
 
 const PUSH_PREFIX = "/push/";
 
-function sendText(response: ServerResponse, status: number, body: string): void {
+const sendText = (response: ServerResponse, status: number, body: string): void => {
   response.writeHead(status, { "content-type": "text/plain; charset=utf-8" });
   response.end(body);
-}
+};
 
-function mediaType(request: IncomingMessage): string | undefined {
+const mediaType = (request: IncomingMessage): string | undefined => {
   return request.headers["content-type"]?.split(";", 1)[0]?.trim().toLowerCase();
-}
+};
 
-async function readRawBody(request: IncomingMessage): Promise<Buffer> {
+const readRawBody = async (request: IncomingMessage): Promise<Buffer> => {
   const chunks: Buffer[] = [];
   for await (const chunk of request) {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks);
-}
+};
 
 export interface MailServerOptions {
   onValidatedMail?: ValidatedMailHandler;
 }
 
-export function createMailServer(options: MailServerOptions = {}): Server {
+export const createMailServer = (options: MailServerOptions = {}): Server => {
   const onValidatedMail = options.onValidatedMail ?? handleValidatedMail;
 
   return createServer(async (request, response) => {
@@ -87,4 +87,4 @@ export function createMailServer(options: MailServerOptions = {}): Server {
       }
     }
   });
-}
+};

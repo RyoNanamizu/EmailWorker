@@ -14,7 +14,7 @@ afterEach(async () => {
   })));
 });
 
-async function start(onValidatedMail?: (mail: ValidatedMail) => void): Promise<number> {
+const start = async (onValidatedMail?: (mail: ValidatedMail) => void): Promise<number> => {
   const server = createMailServer(onValidatedMail ? { onValidatedMail } : {});
   servers.push(server);
   await new Promise<void>((resolve, reject) => {
@@ -22,7 +22,7 @@ async function start(onValidatedMail?: (mail: ValidatedMail) => void): Promise<n
     server.listen(0, "127.0.0.1", () => resolve());
   });
   return (server.address() as AddressInfo).port;
-}
+};
 
 interface ResponseData {
   status: number;
@@ -30,13 +30,13 @@ interface ResponseData {
   body: Buffer;
 }
 
-async function send(
+const send = async (
   port: number,
   path: string,
   body: Buffer = Buffer.alloc(0),
   method = "POST",
   contentType = "message/rfc822",
-): Promise<ResponseData> {
+): Promise<ResponseData> => {
   return new Promise((resolve, reject) => {
     const req = request({ host: "127.0.0.1", port, path, method, headers: { "content-type": contentType } }, (res) => {
       const chunks: Buffer[] = [];
@@ -50,7 +50,7 @@ async function send(
     req.once("error", reject);
     req.end(body);
   });
-}
+};
 
 test("POST /push accepts a matching digest and preserves exact raw bytes", async () => {
   const raw = Buffer.concat([

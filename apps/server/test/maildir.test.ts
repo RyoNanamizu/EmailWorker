@@ -5,15 +5,15 @@ import { join } from "node:path";
 import { test } from "node:test";
 import { initMaildir } from "../src/maildir.js";
 
-async function temporaryPath(): Promise<string> {
+const temporaryPath = async (): Promise<string> => {
   return mkdtemp(join(tmpdir(), "mail-receiver-test-"));
-}
+};
 
-async function assertMaildir(root: string): Promise<void> {
+const assertMaildir = async (root: string): Promise<void> => {
   for (const directory of ["tmp", "new", "cur"]) {
     assert.equal((await stat(join(root, directory))).isDirectory(), true);
   }
-}
+};
 
 test("Maildir initialization creates tmp, new, and cur and is idempotent", async () => {
   const root = join(await temporaryPath(), "Maildir");

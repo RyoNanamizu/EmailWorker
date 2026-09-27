@@ -8,13 +8,13 @@ export interface WarningMailInput {
   receivedAt?: Date;
 }
 
-function bodyValue(value: string | undefined): string {
+const bodyValue = (value: string | undefined): string => {
   if (value === undefined || value === "") return "<unknown>";
   return value.replace(/[\r\n]+/g, " ");
-}
+};
 
 /** Generate a standalone RFC822 warning message without doing any I/O. */
-export function generateWarningMail(input: WarningMailInput): Buffer {
+export const generateWarningMail = (input: WarningMailInput): Buffer => {
   const receivedAt = input.receivedAt ?? new Date();
   const messageId = `<warning-${receivedAt.getTime()}-${randomUUID()}@localhost>`;
   const lines = [
@@ -47,4 +47,4 @@ export function generateWarningMail(input: WarningMailInput): Buffer {
   ];
 
   return Buffer.from(lines.join("\r\n"), "utf8");
-}
+};
