@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readdir, readFile, stat, writeFile } from "node:fs/prom
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { initMaildir } from "../src/maildir.js";
+import { initMailDir } from "../src/maildir.js";
 
 const temporaryPath = async (): Promise<string> => {
   return mkdtemp(join(tmpdir(), "mail-receiver-test-"));
@@ -17,9 +17,9 @@ const assertMaildir = async (root: string): Promise<void> => {
 
 test("Maildir initialization creates tmp, new, and cur and is idempotent", async () => {
   const root = join(await temporaryPath(), "Maildir");
-  const first = await initMaildir(root);
+  const first = await initMailDir(root);
   await assertMaildir(root);
-  const second = await initMaildir(root);
+  const second = await initMailDir(root);
   await assertMaildir(root);
   assert.equal(first.rootPath, root);
   assert.equal(second.rootPath, root);
@@ -28,19 +28,19 @@ test("Maildir initialization creates tmp, new, and cur and is idempotent", async
 test("Maildir initialization fills in missing directories", async () => {
   const root = join(await temporaryPath(), "Maildir");
   await mkdir(join(root, "tmp"), { recursive: true });
-  await initMaildir(root);
+  await initMailDir(root);
   await assertMaildir(root);
 });
 
 test("Maildir initialization propagates filesystem errors", async () => {
   const root = join(await temporaryPath(), "not-a-directory");
   await writeFile(root, "file");
-  await assert.rejects(initMaildir(root));
+  await assert.rejects(initMailDir(root));
 });
 
 test("write stores the complete message in new and leaves tmp empty", async () => {
   const root = join(await temporaryPath(), "Maildir");
-  const maildir = await initMaildir(root);
+  const maildir = await initMailDir(root);
   const message = Buffer.from("Subject: test\r\n\r\nHello\r\n");
 
   await maildir.write(message);
@@ -53,7 +53,7 @@ test("write stores the complete message in new and leaves tmp empty", async () =
 
 test("concurrent writes use unique names and preserve every message", async () => {
   const root = join(await temporaryPath(), "Maildir");
-  const maildir = await initMaildir(root);
+  const maildir = await initMailDir(root);
   const messages = Array.from({ length: 20 }, (_, index) => Buffer.from(`message-${index}`));
 
   await Promise.all(messages.map((message) => maildir.write(message)));

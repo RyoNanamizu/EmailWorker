@@ -41,7 +41,7 @@ curl \
 ## 独立模块
 
 - `generateWarningMail(input)` 返回一封完整 warning 邮件的 `Buffer`，不访问 HTTP 或文件系统。
-- `await initMaildir(path)` 幂等创建 `tmp/`、`new/` 和 `cur/`，并返回可用的 Maildir 实例。`maildir.write(buffer)` 先将完整邮件同步写入 `tmp/`，再移动到 `new/`。
+- `await initMailDir(path)` 幂等创建 `tmp/`、`new/` 和 `cur/`，并返回可用的 Maildir 对象。`maildir.write(buffer)` 先将完整邮件同步写入 `tmp/`，再移动到 `new/`。
 - `handleValidatedMail(mail)` 是后续投递/持久化的 TODO 边界。
 
 ## Docker
