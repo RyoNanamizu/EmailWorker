@@ -60,7 +60,7 @@ export const createMailServer = (options: MailServerOptions): Server => {
       }
 
       const receivedAtHeader = headerStringGuard(request.headers["x-mail-received-at"]);
-      const receivedAt = receivedAtHeader ? new Date(receivedAtHeader) : new Date()
+      const receivedAt = dateGuard(receivedAtHeader)
       const envelopeFrom = headerStringGuard(request.headers["x-mail-from"])
       const envelopeTo = headerStringGuard(request.headers["x-mail-to"])
 
@@ -72,7 +72,7 @@ export const createMailServer = (options: MailServerOptions): Server => {
 
       const raw = await readRawBody(request);
 
-      options.maildir.write(raw, expectedHash, envelopeFrom)
+      const fileQuene = [options.maildir.write(raw, envelopeFrom)]
 
       const actualHash = sha256Hex(raw);
       if (expectedHash !== actualHash) {
@@ -82,9 +82,10 @@ export const createMailServer = (options: MailServerOptions): Server => {
           receivedAt,
           ...optionalHeaders
         })
-        const warningMailHash = sha256Hex(warningMail)
-        options.maildir.write(warningMail, warningMailHash)
+        fileQuene.push(options.maildir.write(warningMail))
       }
+
+      await Promise.all(fileQuene)
 
       // A mismatch was delivered successfully and is therefore still a 204.
       response.writeHead(204);
@@ -109,3 +110,14 @@ const headerStringGuard = (headerValue: string | string[] | undefined): string |
   }
   return undefined;
 };
+
+const dateGuard = (str: string | undefined) => {
+  if (str === undefined) {
+    return new Date()
+  }
+  const date = new Date(str)
+  if (Number.isNaN(date.getTime())) {
+    return new Date()
+  }
+  return date
+}

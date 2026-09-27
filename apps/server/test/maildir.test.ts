@@ -3,7 +3,7 @@ import { mkdtemp, mkdir, readdir, readFile, stat, writeFile } from "node:fs/prom
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { initMailDir } from "../src/maildir.js";
+import { addReturnPath, initMailDir } from "../src/maildir.js";
 
 const temporaryPath = async (): Promise<string> => {
   return mkdtemp(join(tmpdir(), "mail-receiver-test-"));
@@ -38,7 +38,7 @@ test("Maildir initialization propagates filesystem errors", async () => {
   await assert.rejects(initMailDir(root));
 });
 
-test("write stores the complete message in new and leaves tmp empty", async () => {
+test("write prepends an empty Return-Path, stores the message in new, and leaves tmp empty", async () => {
   const root = join(await temporaryPath(), "Maildir");
   const maildir = await initMailDir(root);
   const message = Buffer.from("Subject: test\r\n\r\nHello\r\n");
@@ -48,7 +48,22 @@ test("write stores the complete message in new and leaves tmp empty", async () =
   assert.deepEqual(await readdir(join(root, "tmp")), []);
   const files = await readdir(join(root, "new"));
   assert.equal(files.length, 1);
-  assert.deepEqual(await readFile(join(root, "new", files[0]!)), message);
+  assert.deepEqual(await readFile(join(root, "new", files[0]!)), addReturnPath(message));
+});
+
+test("write includes the envelope sender in Return-Path", async () => {
+  const root = join(await temporaryPath(), "Maildir");
+  const maildir = await initMailDir(root);
+  const message = Buffer.from("Subject: test\r\n\r\nHello\r\n");
+
+  await maildir.write(message, "sender@example.com");
+
+  const files = await readdir(join(root, "new"));
+  assert.equal(files.length, 1);
+  assert.deepEqual(
+    await readFile(join(root, "new", files[0]!)),
+    addReturnPath(message, "sender@example.com"),
+  );
 });
 
 test("concurrent writes use unique names and preserve every message", async () => {
@@ -62,5 +77,8 @@ test("concurrent writes use unique names and preserve every message", async () =
   const files = await readdir(join(root, "new"));
   assert.equal(files.length, messages.length);
   const stored = await Promise.all(files.map((file) => readFile(join(root, "new", file), "utf8")));
-  assert.deepEqual(stored.sort(), messages.map((message) => message.toString()).sort());
+  assert.deepEqual(
+    stored.sort(),
+    messages.map((message) => addReturnPath(message).toString()).sort(),
+  );
 });

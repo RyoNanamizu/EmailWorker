@@ -2,9 +2,9 @@ import { randomUUID } from "node:crypto";
 import { mkdir, open, rename, unlink } from "node:fs/promises";
 import { join } from "node:path";
 
-const writeMail = (rootPath: string) => async (message: Buffer, hashname: string, returnPath?: string,): Promise<void> => {
+const writeMail = (rootPath: string) => async (message: Buffer, returnPath?: string,): Promise<void> => {
   const filename = `${Date.now()}.${process.pid}.${randomUUID()}`;
-  const temporaryPath = join(rootPath, "tmp", hashname);
+  const temporaryPath = join(rootPath, "tmp", filename);
   const destinationPath = join(rootPath, "new", filename);
   const file = await open(temporaryPath, "wx");
   const editedMail = addReturnPath(message, returnPath)
