@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { test } from "node:test";
-import { initializeMaildir, Maildir } from "../src/maildir.js";
+import { initMaildir } from "../src/maildir.js";
 
 async function temporaryPath(): Promise<string> {
   return mkdtemp(join(tmpdir(), "mail-receiver-test-"));
@@ -17,22 +17,50 @@ async function assertMaildir(root: string): Promise<void> {
 
 test("Maildir initialization creates tmp, new, and cur and is idempotent", async () => {
   const root = join(await temporaryPath(), "Maildir");
-  const maildir = new Maildir(root);
-  await maildir.initialize();
+  const first = await initMaildir(root);
   await assertMaildir(root);
-  await maildir.initialize();
+  const second = await initMaildir(root);
   await assertMaildir(root);
+  assert.equal(first.rootPath, root);
+  assert.equal(second.rootPath, root);
 });
 
 test("Maildir initialization fills in missing directories", async () => {
   const root = join(await temporaryPath(), "Maildir");
   await mkdir(join(root, "tmp"), { recursive: true });
-  await initializeMaildir(root);
+  await initMaildir(root);
   await assertMaildir(root);
 });
 
 test("Maildir initialization propagates filesystem errors", async () => {
   const root = join(await temporaryPath(), "not-a-directory");
   await writeFile(root, "file");
-  await assert.rejects(initializeMaildir(root));
+  await assert.rejects(initMaildir(root));
+});
+
+test("write stores the complete message in new and leaves tmp empty", async () => {
+  const root = join(await temporaryPath(), "Maildir");
+  const maildir = await initMaildir(root);
+  const message = Buffer.from("Subject: test\r\n\r\nHello\r\n");
+
+  await maildir.write(message);
+
+  assert.deepEqual(await readdir(join(root, "tmp")), []);
+  const files = await readdir(join(root, "new"));
+  assert.equal(files.length, 1);
+  assert.deepEqual(await readFile(join(root, "new", files[0]!)), message);
+});
+
+test("concurrent writes use unique names and preserve every message", async () => {
+  const root = join(await temporaryPath(), "Maildir");
+  const maildir = await initMaildir(root);
+  const messages = Array.from({ length: 20 }, (_, index) => Buffer.from(`message-${index}`));
+
+  await Promise.all(messages.map((message) => maildir.write(message)));
+
+  assert.deepEqual(await readdir(join(root, "tmp")), []);
+  const files = await readdir(join(root, "new"));
+  assert.equal(files.length, messages.length);
+  const stored = await Promise.all(files.map((file) => readFile(join(root, "new", file), "utf8")));
+  assert.deepEqual(stored.sort(), messages.map((message) => message.toString()).sort());
 });
