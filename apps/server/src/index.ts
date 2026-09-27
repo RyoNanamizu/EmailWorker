@@ -1,5 +1,6 @@
 import type { Server } from "node:http";
 import { createMailServer } from "./server.js";
+import { initMailDir } from "./maildir.js";
 
 const listen = (server: Server, host: string, port: number): Promise<void> => {
   return new Promise((resolve, reject) => {
@@ -23,7 +24,11 @@ const listenPort = (value: string | undefined): number => {
 export const main = async (): Promise<void> => {
   const host = process.env.LISTEN_HOST ?? "0.0.0.0";
   const port = listenPort(process.env.LISTEN_PORT);
-  const server = createMailServer();
+  const maildir = await initMailDir()
+  console.log("Maildir inited.")
+  const server = createMailServer({
+    maildir
+  });
   await listen(server, host, port);
   console.log(`Mail receiver listening on http://${host}:${port}`);
 

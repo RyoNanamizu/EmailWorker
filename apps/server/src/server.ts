@@ -1,11 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { normalizeSha256, sha256Hex } from "./hash.js";
-import {
-  handleValidatedMail,
-  type ValidatedMail,
-  type ValidatedMailHandler,
-} from "./validated-mail.js";
-
+import { type typeMaildir } from "./maildir.js";
+import { generateWarningMail } from "./warning.js";
 const PUSH_PREFIX = "/push/";
 
 const sendText = (response: ServerResponse, status: number, body: string): void => {
@@ -25,12 +21,11 @@ const readRawBody = async (request: IncomingMessage): Promise<Buffer> => {
   return Buffer.concat(chunks);
 };
 
-export interface MailServerOptions {
-  onValidatedMail?: ValidatedMailHandler;
+interface MailServerOptions {
+  maildir: typeMaildir
 }
 
-export const createMailServer = (options: MailServerOptions = {}): Server => {
-  const onValidatedMail = options.onValidatedMail ?? handleValidatedMail;
+export const createMailServer = (options: MailServerOptions): Server => {
 
   return createServer(async (request, response) => {
     try {
@@ -64,16 +59,32 @@ export const createMailServer = (options: MailServerOptions = {}): Server => {
         return;
       }
 
-      const raw = await readRawBody(request);
-      const actualHash = sha256Hex(raw);
-      const mail: ValidatedMail = {
-        expectedHash,
-        actualHash,
-        hashValid: expectedHash === actualHash,
-        raw,
-      };
+      const receivedAtHeader = headerStringGuard(request.headers["x-mail-received-at"]);
+      const receivedAt = receivedAtHeader ? new Date(receivedAtHeader) : new Date()
+      const envelopeFrom = headerStringGuard(request.headers["x-mail-from"])
+      const envelopeTo = headerStringGuard(request.headers["x-mail-to"])
 
-      await onValidatedMail(mail);
+      const optionalHeaders = {
+        ...envelopeFrom ? { envelopeFrom } : {},
+        ...envelopeTo ? { envelopeTo } : {}
+      }
+
+
+      const raw = await readRawBody(request);
+
+      options.maildir.write(raw, expectedHash, envelopeFrom)
+
+      const actualHash = sha256Hex(raw);
+      if (expectedHash !== actualHash) {
+        const warningMail = generateWarningMail({
+          expectedHash,
+          actualHash,
+          receivedAt,
+          ...optionalHeaders
+        })
+        const warningMailHash = sha256Hex(warningMail)
+        options.maildir.write(warningMail, warningMailHash)
+      }
 
       // A mismatch was delivered successfully and is therefore still a 204.
       response.writeHead(204);
@@ -87,4 +98,14 @@ export const createMailServer = (options: MailServerOptions = {}): Server => {
       }
     }
   });
+};
+
+const headerStringGuard = (headerValue: string | string[] | undefined): string | undefined => {
+  if (typeof headerValue === "string") {
+    return headerValue;
+  }
+  if (Array.isArray(headerValue)) {
+    return JSON.stringify(headerValue);
+  }
+  return undefined;
 };
