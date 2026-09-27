@@ -1,21 +1,22 @@
 {
-  "name": "server",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "name": "email-receiver-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A small HTTP service that validates raw RFC822 mail payloads.",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc -p tsconfig.json",
+    "build:runtime": "tsc -p tsconfig.runtime.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "pnpm run build && node --test dist/test/*.test.js",
+    "start": "node dist/src/index.js"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "12.5.1",
-      "onFail": "download"
-    }
+  "devDependencies": {
+    "@types/node": "^22.20.0",
+    "typescript": "^5.9.0"
   },
-  "packageManager": "pnpm@12.5.1",
-  "type": "module"
+  "packageManager": "pnpm@12.5.1"
 }
