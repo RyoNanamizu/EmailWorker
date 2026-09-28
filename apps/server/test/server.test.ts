@@ -12,6 +12,7 @@ interface RecordedWrite {
 }
 
 const servers: Server[] = [];
+const TEST_BEARER_TOKEN = "test-bearer-token";
 
 afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => new Promise<void>((resolve, reject) => {
@@ -33,7 +34,7 @@ const recordingMaildir = (): { maildir: typeMaildir; writes: RecordedWrite[] } =
 };
 
 const start = async (maildir: typeMaildir): Promise<number> => {
-  const server = createMailServer({ maildir });
+  const server = createMailServer({ maildir, bearerToken: TEST_BEARER_TOKEN });
   servers.push(server);
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);
@@ -55,6 +56,7 @@ const send = async (
   method = "POST",
   contentType = "message/rfc822",
   headers: Record<string, string> = {},
+  bearerToken: string | null = TEST_BEARER_TOKEN,
 ): Promise<ResponseData> => {
   return new Promise((resolve, reject) => {
     const req = request({
@@ -62,7 +64,11 @@ const send = async (
       port,
       path,
       method,
-      headers: { "content-type": contentType, ...headers },
+      headers: {
+        "content-type": contentType,
+        ...(bearerToken === null ? {} : { authorization: `Bearer ${bearerToken}` }),
+        ...headers,
+      },
     }, (res) => {
       const chunks: Buffer[] = [];
       res.on("data", (chunk: Buffer) => chunks.push(chunk));
@@ -94,6 +100,21 @@ test("POST /push stores matching raw bytes and envelope sender", async () => {
   assert.equal(writes.length, 1);
   assert.deepEqual(writes[0]?.message, raw);
   assert.equal(writes[0]?.returnPath, "sender@example.com");
+});
+
+test("POST /push requires a valid bearer token", async () => {
+  const raw = Buffer.from("message", "utf8");
+  const expected = createHash("sha256").update(raw).digest("hex");
+  const { maildir, writes } = recordingMaildir();
+  const port = await start(maildir);
+
+  const missing = await send(port, `/push/${expected}`, raw, "POST", "message/rfc822", {}, null);
+  assert.equal(missing.status, 401);
+  assert.equal(missing.headers["www-authenticate"], "Bearer");
+
+  const incorrect = await send(port, `/push/${expected}`, raw, "POST", "message/rfc822", {}, "incorrect");
+  assert.equal(incorrect.status, 401);
+  assert.equal(writes.length, 0);
 });
 
 test("a digest mismatch stores the original and a warning mail", async () => {
@@ -187,12 +208,10 @@ test("incorrect content type returns 415", async () => {
   assert.equal((await send(port, `/push/${"0".repeat(64)}`, Buffer.from("x"), "POST", "text/plain")).status, 415);
 });
 
-test("unknown paths return 404 and health check returns JSON", async () => {
+test("unknown paths return 404", async () => {
   const { maildir } = recordingMaildir();
   const port = await start(maildir);
 
   assert.equal((await send(port, "/unknown")).status, 404);
-  const health = await send(port, "/health", Buffer.alloc(0), "GET");
-  assert.equal(health.status, 200);
-  assert.deepEqual(JSON.parse(health.body.toString("utf8")), { ok: true });
+  assert.equal((await send(port, "/health", Buffer.alloc(0), "GET")).status, 404);
 });

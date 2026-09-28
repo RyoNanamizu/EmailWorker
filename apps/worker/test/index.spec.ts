@@ -10,16 +10,14 @@ const RAW_TEXT = [
 	"",
 	"Hello, 世界!",
 ].join("\r\n");
-const TOKEN = "test-worker-token";
-const PUSH_TOKEN = "test-push-token";
+const TOKEN = "test-bearer-token";
 const encoder = new TextEncoder();
 
 function testEnv(): WorkerEnv {
 	return {
 		MAIL_BUCKET: env.MAIL_BUCKET,
 		VPS_BASE_URL: "https://mail.example.net/daemon",
-		VPS_PUSH_TOKEN: PUSH_TOKEN,
-		WORKER_API_TOKEN: TOKEN,
+		BEARER_TOKEN: TOKEN,
 	};
 }
 
@@ -110,7 +108,7 @@ describe("email delivery", () => {
 		expect(input.toString()).toBe(`https://mail.example.net/daemon/push/${id}`);
 		expect(init?.method).toBe("POST");
 		const headers = new Headers(init?.headers);
-		expect(headers.get("Authorization")).toBe(`Bearer ${PUSH_TOKEN}`);
+		expect(headers.get("Authorization")).toBe(`Bearer ${TOKEN}`);
 		expect(headers.get("Content-Type")).toBe("message/rfc822");
 		expect(headers.get("X-Mail-ID")).toBe(id);
 		expect(headers.get("X-Mail-From")).toBe("sender@example.org");

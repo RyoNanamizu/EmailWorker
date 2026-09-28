@@ -55,20 +55,18 @@ R2 bucket 不需要公开域名或 S3 API token；Worker 通过内部 binding �
 
 ## Secrets 与变量
 
-必须配置以下三项，且不要写入源码或 `wrangler.toml`：
+必须配置以下两项，且不要写入源码或 `wrangler.toml`：
 
 | 名称 | 用途 |
 | --- | --- |
 | `VPS_BASE_URL` | VPS daemon 的 HTTPS 基础 URL，不包含尾部 `push/<mailId>`，例如 `https://mail.example.net` 或 `https://example.net/daemon` |
-| `VPS_PUSH_TOKEN` | Worker 调用 VPS `/push/<mailId>` 时发送的 Bearer token |
-| `WORKER_API_TOKEN` | VPS 调用 Worker `/list`、`/mail`、`/confirm` 时使用的 Bearer token |
+| `BEARER_TOKEN` | Worker 调用 VPS `/push/<mailId>`，以及 VPS 调用 Worker `/list`、`/mail`、`/confirm` 时共用的 Bearer token |
 
 生产 secrets：
 
 ```bash
 pnpm exec wrangler secret put VPS_BASE_URL
-pnpm exec wrangler secret put VPS_PUSH_TOKEN
-pnpm exec wrangler secret put WORKER_API_TOKEN
+pnpm exec wrangler secret put BEARER_TOKEN
 ```
 
 本地开发可复制 `.dev.vars.example` 为 `.dev.vars` 并填写测试值；`.dev.vars*` 已被 gitignore 忽略。
@@ -95,7 +93,7 @@ Worker 最多等待约 10 秒，并请求 `${VPS_BASE_URL}/push/<mailId>`。如�
 
 ```http
 POST /push/<64-char lowercase sha256>
-Authorization: Bearer <VPS_PUSH_TOKEN>
+Authorization: Bearer <BEARER_TOKEN>
 Content-Type: message/rfc822
 X-Mail-ID: <64-char lowercase sha256>
 X-Mail-From: <envelope sender>
@@ -113,7 +111,7 @@ URL 路径中的 hash 与 `X-Mail-ID` 相同。只有 2xx 表示成功。VPS 应
 所有 `/list`、`/mail` 和 `/confirm` 请求都必须带：
 
 ```http
-Authorization: Bearer <WORKER_API_TOKEN>
+Authorization: Bearer <BEARER_TOKEN>
 ```
 
 token 不支持 query string。未授权返回 401，错误 method 返回 405，未知路径返回 404。错误响应不会包含 token、stack trace 或 Cloudflare 内部异常。
@@ -124,7 +122,7 @@ token 不支持 query string。未授权返回 401，错误 method 返回 405，
 
 ```bash
 curl --fail-with-body \
-  -H "Authorization: Bearer $WORKER_API_TOKEN" \
+  -H "Authorization: Bearer $BEARER_TOKEN" \
   "https://email-fallback-worker.<subdomain>.workers.dev/list?limit=100"
 ```
 
@@ -141,7 +139,7 @@ curl --fail-with-body \
 
 ```bash
 curl --fail-with-body \
-  -H "Authorization: Bearer $WORKER_API_TOKEN" \
+  -H "Authorization: Bearer $BEARER_TOKEN" \
   "https://email-fallback-worker.<subdomain>.workers.dev/mail?id=$MAIL_ID" \
   --output "$MAIL_ID.eml"
 ```
@@ -157,7 +155,7 @@ VPS 只有在邮件已可靠保存后才应调用：
 ```bash
 curl --fail-with-body \
   -X POST \
-  -H "Authorization: Bearer $WORKER_API_TOKEN" \
+  -H "Authorization: Bearer $BEARER_TOKEN" \
   -H "Content-Type: application/json" \
   --data '{"ids":["<sha256>"]}' \
   "https://email-fallback-worker.<subdomain>.workers.dev/confirm"
@@ -184,7 +182,7 @@ Vitest 使用本地隔离的 R2 binding。Email Routing 的真实 SMTP 接入仍
 
 1. 创建 R2 bucket `email-worker-mail`，或修改配置为你已有的 bucket。
 2. 确认 Worker 的 R2 binding 名为 `MAIL_BUCKET`。
-3. 用 `wrangler secret put` 设置 `VPS_BASE_URL`、`VPS_PUSH_TOKEN`、`WORKER_API_TOKEN`。
+3. 用 `wrangler secret put` 设置 `VPS_BASE_URL`、`BEARER_TOKEN`。
 4. 部署 Worker，并为其保留可供 VPS 访问的 HTTP URL（`workers.dev` 或自定义域）。
 5. 为域名启用 Email Routing/MX 记录，并创建 **Send to a Worker** 的 routing rule。
 6. 在 VPS daemon 配置相同 token、Worker URL、每次启动及每 60 分钟执行的 `/list`、`/mail`、`/confirm` 补投流程。

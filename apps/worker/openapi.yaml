@@ -160,7 +160,7 @@ components:
     bearerAuth:
       type: http
       scheme: bearer
-      description: The value of the Worker's `WORKER_API_TOKEN` secret.
+      description: The value of the shared `BEARER_TOKEN` secret.
 
   schemas:
     MailId:

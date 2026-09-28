@@ -1,8 +1,17 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { timingSafeEqual } from "node:crypto";
+import {
+  BEARER_AUTH_PREFIX,
+  BEARER_AUTH_SCHEME,
+  MAIL_FROM_HEADER,
+  MAIL_MEDIA_TYPE,
+  MAIL_RECEIVED_AT_HEADER,
+  MAIL_TO_HEADER,
+  PUSH_PATH_PREFIX,
+} from "./constants.js";
 import { normalizeSha256, sha256Hex } from "./hash.js";
 import { type typeMaildir } from "./maildir.js";
 import { generateWarningMail } from "./warning.js";
-const PUSH_PREFIX = "/push/";
 
 const sendText = (response: ServerResponse, status: number, body: string): void => {
   response.writeHead(status, { "content-type": "text/plain; charset=utf-8" });
@@ -22,23 +31,27 @@ const readRawBody = async (request: IncomingMessage): Promise<Buffer> => {
 };
 
 interface MailServerOptions {
-  maildir: typeMaildir
+  maildir: typeMaildir;
+  bearerToken: string;
 }
 
 export const createMailServer = (options: MailServerOptions): Server => {
+  if (options.bearerToken.length === 0) {
+    throw new Error("bearerToken must not be empty");
+  }
 
   return createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", "http://localhost");
 
-      if (request.method === "GET" && url.pathname === "/health") {
-        response.writeHead(200, { "content-type": "application/json; charset=utf-8" });
-        response.end('{"ok":true}\n');
+      if (!url.pathname.startsWith(PUSH_PATH_PREFIX)) {
+        sendText(response, 404, "Not Found\n");
         return;
       }
 
-      if (!url.pathname.startsWith(PUSH_PREFIX)) {
-        sendText(response, 404, "Not Found\n");
+      if (!hasValidBearerToken(request, options.bearerToken)) {
+        response.setHeader("www-authenticate", BEARER_AUTH_SCHEME);
+        sendText(response, 401, "Unauthorized\n");
         return;
       }
 
@@ -48,21 +61,21 @@ export const createMailServer = (options: MailServerOptions): Server => {
         return;
       }
 
-      const expectedHash = normalizeSha256(url.pathname.slice(PUSH_PREFIX.length));
+      const expectedHash = normalizeSha256(url.pathname.slice(PUSH_PATH_PREFIX.length));
       if (expectedHash === null) {
         sendText(response, 400, "Invalid SHA-256 hash\n");
         return;
       }
 
-      if (mediaType(request) !== "message/rfc822") {
-        sendText(response, 415, "Content-Type must be message/rfc822\n");
+      if (mediaType(request) !== MAIL_MEDIA_TYPE) {
+        sendText(response, 415, `Content-Type must be ${MAIL_MEDIA_TYPE}\n`);
         return;
       }
 
-      const receivedAtHeader = headerStringGuard(request.headers["x-mail-received-at"]);
+      const receivedAtHeader = headerStringGuard(request.headers[MAIL_RECEIVED_AT_HEADER]);
       const receivedAt = dateGuard(receivedAtHeader)
-      const envelopeFrom = headerStringGuard(request.headers["x-mail-from"])
-      const envelopeTo = headerStringGuard(request.headers["x-mail-to"])
+      const envelopeFrom = headerStringGuard(request.headers[MAIL_FROM_HEADER])
+      const envelopeTo = headerStringGuard(request.headers[MAIL_TO_HEADER])
 
       const optionalHeaders = {
         ...envelopeFrom ? { envelopeFrom } : {},
@@ -99,6 +112,18 @@ export const createMailServer = (options: MailServerOptions): Server => {
       }
     }
   });
+};
+
+const hasValidBearerToken = (request: IncomingMessage, expectedToken: string): boolean => {
+  const authorization = request.headers.authorization;
+  if (typeof authorization !== "string" || !authorization.startsWith(BEARER_AUTH_PREFIX)) {
+    return false;
+  }
+
+  const providedToken = Buffer.from(authorization.slice(BEARER_AUTH_PREFIX.length));
+  const expectedTokenBuffer = Buffer.from(expectedToken);
+  return providedToken.length === expectedTokenBuffer.length
+    && timingSafeEqual(providedToken, expectedTokenBuffer);
 };
 
 const headerStringGuard = (headerValue: string | string[] | undefined): string | undefined => {

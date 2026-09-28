@@ -19,10 +19,8 @@ export interface WorkerEnv {
 	MAIL_BUCKET: R2Bucket;
 	/** HTTPS base URL of the VPS daemon; `/push/<mailId>` is appended by the Worker. */
 	VPS_BASE_URL: string;
-	/** Bearer token used by the Worker when calling the VPS. */
-	VPS_PUSH_TOKEN: string;
-	/** Bearer token required by the Worker's recovery APIs. */
-	WORKER_API_TOKEN: string;
+	/** Shared Bearer token for Worker-to-VPS pushes and VPS-to-Worker recovery APIs. */
+	BEARER_TOKEN: string;
 }
 
 // Fetch is injectable so delivery failures and timeouts can be tested without
@@ -128,7 +126,7 @@ async function pushToVps(
 	timeoutMs: number,
 ): Promise<boolean> {
 	const url = pushUrl(env.VPS_BASE_URL, id);
-	if (!url || !env.VPS_PUSH_TOKEN) {
+	if (!url || !env.BEARER_TOKEN) {
 		console.warn("Email push skipped due to invalid VPS configuration", {
 			mailId: id,
 			recipient: to,
@@ -145,7 +143,7 @@ async function pushToVps(
 		const response = await fetcher(url, {
 			method: "POST",
 			headers: {
-				Authorization: `Bearer ${env.VPS_PUSH_TOKEN}`,
+				Authorization: `Bearer ${env.BEARER_TOKEN}`,
 				"Content-Type": "message/rfc822",
 				"X-Mail-ID": id,
 				"X-Mail-From": from,
@@ -341,7 +339,7 @@ async function handleConfirm(request: Request, env: WorkerEnv): Promise<Response
 export async function handleHttp(request: Request, env: WorkerEnv): Promise<Response> {
 	try {
 		const path = new URL(request.url).pathname;
-		if (!isAuthorized(request, env.WORKER_API_TOKEN)) {
+		if (!isAuthorized(request, env.BEARER_TOKEN)) {
 			return textResponse("Unauthorized", 401);
 		}
 

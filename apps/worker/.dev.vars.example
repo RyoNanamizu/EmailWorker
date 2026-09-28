@@ -1,4 +1,3 @@
 # Local development only. Copy to .dev.vars and replace every value.
 VPS_BASE_URL="https://mail.example.net"
-VPS_PUSH_TOKEN="replace-with-a-long-random-token"
-WORKER_API_TOKEN="replace-with-a-different-long-random-token"
+BEARER_TOKEN="replace-with-a-long-random-token"

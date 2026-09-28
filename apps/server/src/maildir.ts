@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, open, rename, unlink } from "node:fs/promises";
 import { join } from "node:path";
+import { DEFAULT_MAILDIR_PATH, MAILDIR_DIRECTORIES } from "./constants.js";
 
 const writeMail = (rootPath: string) => async (message: Buffer, returnPath?: string,): Promise<void> => {
   const filename = `${Date.now()}.${process.pid}.${randomUUID()}`;
@@ -22,8 +23,8 @@ const writeMail = (rootPath: string) => async (message: Buffer, returnPath?: str
 };
 
 /** Ensure the standard Maildir directories exist and return a ready-to-use instance. */
-export const initMailDir = async (rootPath: string = 'maildir') => {
-  for (const directory of ["tmp", "new", "cur"] as const) {
+export const initMailDir = async (rootPath: string = DEFAULT_MAILDIR_PATH) => {
+  for (const directory of MAILDIR_DIRECTORIES) {
     await mkdir(join(rootPath, directory), { recursive: true });
   }
 
