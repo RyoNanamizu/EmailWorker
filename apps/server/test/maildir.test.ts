@@ -66,6 +66,59 @@ test("write includes the envelope sender in Return-Path", async () => {
   );
 });
 
+test("addReturnPath replaces existing Return-Path headers and their continuations", () => {
+  const message = Buffer.from([
+    "rEtUrN-pAtH: <untrusted@example.com>",
+    "\tcontinued-untrusted-value",
+    "Subject: test",
+    "Return-Path: <also-untrusted@example.com>",
+    " X-Untrusted: continuation",
+    "From: sender@example.com",
+    "",
+    "Return-Path: body text must be preserved",
+    "",
+  ].join("\r\n"));
+
+  assert.deepEqual(
+    addReturnPath(message, "trusted@example.com"),
+    Buffer.from([
+      "Return-Path: <trusted@example.com>",
+      "Subject: test",
+      "From: sender@example.com",
+      "",
+      "Return-Path: body text must be preserved",
+      "",
+    ].join("\r\n")),
+  );
+});
+
+test("addReturnPath supports a UTF-8 envelope sender without changing other message bytes", () => {
+  const message = Buffer.concat([
+    Buffer.from("Subject: test\r\n\r\n"),
+    Buffer.from([0x00, 0x80, 0xff]),
+  ]);
+
+  assert.deepEqual(
+    addReturnPath(message, "用户@example.com"),
+    Buffer.concat([
+      Buffer.from("Return-Path: <用户@example.com>\r\n", "utf8"),
+      message,
+    ]),
+  );
+});
+
+test("addReturnPath preserves a null SMTP reverse-path", () => {
+  const message = Buffer.from("Subject: delivery status\r\n\r\nHello\r\n");
+
+  assert.deepEqual(
+    addReturnPath(message, "<>"),
+    Buffer.concat([
+      Buffer.from("Return-Path: <>\r\n"),
+      message,
+    ]),
+  );
+});
+
 test("concurrent writes use unique names and preserve every message", async () => {
   const root = join(await temporaryPath(), "Maildir");
   const maildir = await initMailDir(root);
